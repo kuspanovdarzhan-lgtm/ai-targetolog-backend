@@ -1,0 +1,42 @@
+import { Router } from 'express';
+import OpenAI from 'openai';
+
+const router = Router();
+
+const FRAMEWORKS = {
+  pas: 'PAS (Проблема → Агитация → Решение)',
+  aida: 'AIDA (Внимание → Интерес → Желание → Действие)',
+};
+
+router.post('/', async (req, res) => {
+  if (!process.env.OPENAI_API_KEY) {
+    return res.status(503).json({ error: 'OPENAI_API_KEY не задан в .env' });
+  }
+
+  const { product, audience, offer, tone = 'дружеский', framework = 'pas' } = req.body || {};
+  if (!product || !offer) {
+    return res.status(400).json({ error: 'product и offer обязательны' });
+  }
+
+  const prompt = `Напиши рекламный текст для Instagram/Facebook на русском языке.
+Товар/услуга: ${product}
+Аудитория: ${audience || 'не указана'}
+Оффер: ${offer}
+Тон: ${tone}
+Структура: ${FRAMEWORKS[framework] || FRAMEWORKS.pas}
+Текст короткий (до 600 знаков), с уместными эмодзи, без markdown-разметки.`;
+
+  try {
+    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const completion = await client.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.8,
+    });
+    res.json({ text: completion.choices[0].message.content.trim() });
+  } catch (err) {
+    res.status(502).json({ error: 'Ошибка генерации текста', details: err.message });
+  }
+});
+
+export default router;
