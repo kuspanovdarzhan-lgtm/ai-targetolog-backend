@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import OpenAI from 'openai';
+import { requireClient, spendUnits } from '../lib/auth.js';
 
 const router = Router();
 
@@ -8,9 +9,14 @@ const FRAMEWORKS = {
   aida: 'AIDA (Внимание → Интерес → Желание → Действие)',
 };
 
-router.post('/', async (req, res) => {
+router.post('/', requireClient, async (req, res) => {
   if (!process.env.OPENAI_API_KEY) {
     return res.status(503).json({ error: 'OPENAI_API_KEY не задан в .env' });
+  }
+
+  const ok = await spendUnits(req.client, 1);
+  if (!ok) {
+    return res.status(429).json({ error: 'Дневной лимит по тарифу исчерпан, попробуйте завтра' });
   }
 
   const { product, audience, offer, tone = 'дружеский', framework = 'pas' } = req.body || {};

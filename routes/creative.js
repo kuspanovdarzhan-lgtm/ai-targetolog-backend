@@ -1,11 +1,18 @@
 import { Router } from 'express';
 import OpenAI from 'openai';
+import { requireClient, spendUnits } from '../lib/auth.js';
 
 const router = Router();
 
-router.post('/', async (req, res) => {
+router.post('/', requireClient, async (req, res) => {
   if (!process.env.OPENAI_API_KEY) {
     return res.status(503).json({ error: 'OPENAI_API_KEY не задан в .env' });
+  }
+
+  // Картинка заметно дороже текста — списываем 5 единиц вместо 1
+  const ok = await spendUnits(req.client, 5);
+  if (!ok) {
+    return res.status(429).json({ error: 'Дневной лимит по тарифу исчерпан, попробуйте завтра' });
   }
 
   const { description, style = 'минимализм, яркий, премиум' } = req.body || {};
