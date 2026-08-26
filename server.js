@@ -8,6 +8,7 @@ import creativeRouter from './routes/creative.js';
 import metaAdsRouter from './routes/metaAds.js';
 import strategyRouter from './routes/strategy.js';
 import clientsRouter from './routes/clients.js';
+import contentPlanRouter from './routes/contentPlan.js';
 
 const app = express();
 app.use(cors());
@@ -21,6 +22,7 @@ app.use('/api/creative', creativeRouter);
 app.use('/api/meta-ads', metaAdsRouter);
 app.use('/api/strategy', strategyRouter);
 app.use('/api/clients', clientsRouter);
+app.use('/api/content-plan', contentPlanRouter);
 
 const port = process.env.PORT || 3001;
 app.listen(port, () => {

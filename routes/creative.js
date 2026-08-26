@@ -15,17 +15,24 @@ router.post('/', requireClient, async (req, res) => {
     return res.status(429).json({ error: 'Дневной лимит по тарифу исчерпан, попробуйте завтра' });
   }
 
-  const { description, style = 'минимализм, яркий, премиум' } = req.body || {};
+  const { description, style = 'минимализм, яркий, премиум', format = 'feed' } = req.body || {};
   if (!description) {
     return res.status(400).json({ error: 'description обязателен' });
   }
+
+  const SIZES = {
+    feed: '1024x1024',   // квадрат — лента Instagram/Facebook
+    story: '1024x1536',  // вертикаль — Stories/Reels
+    banner: '1536x1024', // горизонталь — Facebook-баннер
+  };
+  const size = SIZES[format] || SIZES.feed;
 
   try {
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const image = await client.images.generate({
       model: 'gpt-image-1',
-      prompt: `Рекламный креатив для соцсетей. ${description}. Стиль: ${style}.`,
-      size: '1024x1024',
+      prompt: `Рекламный креатив для соцсетей. ${description}. Стиль: ${style}. Без текста на изображении.`,
+      size,
     });
     res.json({ b64: image.data[0].b64_json });
   } catch (err) {
