@@ -29,9 +29,23 @@ router.post('/', requireClient, async (req, res) => {
 
   try {
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+    // gpt-image-1 заметно хуже следует описанию на русском/кириллице и часто
+    // съезжает на generic premium-product кадр. Прогоняем через перевод на
+    // английский, чтобы содержание картинки реально совпадало с брифом.
+    const translation = await client.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{
+        role: 'user',
+        content: `Translate and expand this into a vivid, concrete English prompt for an AI image generator making an ad creative. Keep it under 300 characters, describe the literal scene (subject, setting, composition), no marketing fluff words. Source (Russian): "${description}". Style: ${style}.`,
+      }],
+      temperature: 0.5,
+    });
+    const englishPrompt = translation.choices[0].message.content.trim();
+
     const image = await client.images.generate({
       model: 'gpt-image-1',
-      prompt: `Рекламный креатив для соцсетей. ${description}. Стиль: ${style}. Без текста на изображении.`,
+      prompt: `Advertising creative for social media. ${englishPrompt} No text or letters anywhere in the image.`,
       size,
     });
     res.json({ b64: image.data[0].b64_json });
