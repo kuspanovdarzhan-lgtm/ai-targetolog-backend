@@ -9,6 +9,8 @@ import metaAdsRouter from './routes/metaAds.js';
 import strategyRouter from './routes/strategy.js';
 import clientsRouter from './routes/clients.js';
 import contentPlanRouter from './routes/contentPlan.js';
+import clientLeadsRouter from './routes/clientLeads.js';
+import reportRouter from './routes/report.js';
 
 const app = express();
 app.use(cors());
@@ -23,6 +25,8 @@ app.use('/api/meta-ads', metaAdsRouter);
 app.use('/api/strategy', strategyRouter);
 app.use('/api/clients', clientsRouter);
 app.use('/api/content-plan', contentPlanRouter);
+app.use('/api/client-leads', clientLeadsRouter);
+app.use('/api/report', reportRouter);
 
 const port = process.env.PORT || 3001;
 app.listen(port, () => {
