@@ -44,13 +44,20 @@ router.patch('/:id', requireAdmin, async (req, res) => {
   await db.read();
   const client = db.data.clients.find((c) => c.id === req.params.id);
   if (!client) return res.status(404).json({ error: 'клиент не найден' });
-  const { active, tariff } = req.body || {};
+  const { active, tariff, campaignStatus } = req.body || {};
   if (typeof active === 'boolean') client.active = active;
   if (tariff) {
     if (!TARIFF_LIMITS[tariff]) {
       return res.status(400).json({ error: `tariff должен быть одним из: ${Object.keys(TARIFF_LIMITS).join(', ')}` });
     }
     client.tariff = tariff;
+  }
+  if (campaignStatus) {
+    if (!['submitted', 'launched'].includes(campaignStatus)) {
+      return res.status(400).json({ error: "campaignStatus должен быть 'submitted' или 'launched'" });
+    }
+    client.campaignStatus = campaignStatus;
+    client.campaignUpdatedAt = new Date().toISOString();
   }
   await db.write();
   res.json({ ok: true, client });
