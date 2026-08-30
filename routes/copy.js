@@ -19,12 +19,14 @@ router.post('/', requireClient, async (req, res) => {
     return res.status(429).json({ error: 'Дневной лимит по тарифу исчерпан, попробуйте завтра' });
   }
 
-  const { product, audience, offer, framework = 'pas' } = req.body || {};
+  const { product, audience, offer, framework = 'pas', language = 'ru' } = req.body || {};
   if (!product || !offer) {
     return res.status(400).json({ error: 'product и offer обязательны' });
   }
 
-  const prompt = `Напиши 3 варианта рекламного текста для Instagram/Facebook на русском языке под один и тот же оффер, разным тоном:
+  const LANG_LABEL = language === 'kz' ? 'казахском' : 'русском';
+
+  const prompt = `Напиши 3 варианта рекламного текста для Instagram/Facebook на ${LANG_LABEL} языке под один и тот же оффер, разным тоном:
 1) ЭКСПЕРТНЫЙ ТОН — факты и цифры, без эмоций
 2) ЭМОЦИОНАЛЬНЫЙ ТОН — акцент на ощущения от результата
 3) ЧЕРЕЗ БОЛЬ КЛИЕНТА — старт с проблемы, которую снимает оффер
