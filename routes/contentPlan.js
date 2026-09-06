@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import OpenAI from 'openai';
+import { db } from '../lib/db.js';
 import { requireClient, spendUnits } from '../lib/auth.js';
 
 const router = Router();
@@ -22,7 +23,7 @@ router.post('/', requireClient, async (req, res) => {
 
   const LANG_LABEL = language === 'kz' ? 'казахском' : 'русском';
 
-  const prompt = `Составь контент-план на 4 недели вперёд для Instagram под нишу. Пиши на ${LANG_LABEL} языке.
+  const prompt = `Составь контент-план на 4 недели вперёд для Instagram под нишу. Пиши на ${LANG_LABEL} языке. Используй только данные брифа ниже, не выдумывай факты о товаре, скидках или конкурентах.
 Ниша: ${niche}
 Целевой клиент: ${audience || 'не указан'}
 Доп. детали: ${notes || '—'}
@@ -35,8 +36,9 @@ router.post('/', requireClient, async (req, res) => {
 
 Жёсткие требования:
 - Никаких вводных и заключительных фраз
+- Запрещено: проценты, статистика, "исследования показывают", гарантии результата, скидки/цены/акции, которых нет в брифе выше
 - Запрещены клише: "незабываемые впечатления", "уютная атмосфера", "мир возможностей", "не упустите шанс" и подобные
-- Каждая идея — конкретное действие или факт (например: "покажи процесс приготовления за 15 сек", "цифра: сколько клиентов обслужили за месяц"), а не настроение
+- Каждая идея — конкретное действие или формат съёмки (например: "покажи процесс приготовления за 15 сек"), а не настроение или выдуманный факт
 - Компактно, списком по неделям
 - Без markdown-разметки (никаких ###, **, __) — заголовки недель и полей просто текстом с новой строки`;
 
@@ -47,7 +49,12 @@ router.post('/', requireClient, async (req, res) => {
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.7,
     });
-    res.json({ text: completion.choices[0].message.content.trim() });
+    const text = completion.choices[0].message.content.trim();
+
+    req.client.materials.contentPlan = { text, brief: { niche, audience, notes, language }, createdAt: new Date().toISOString() };
+    await db.write();
+
+    res.json({ text });
   } catch (err) {
     res.status(502).json({ error: 'Ошибка генерации контент-плана', details: err.message });
   }

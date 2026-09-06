@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import OpenAI from 'openai';
+import { db } from '../lib/db.js';
 import { requireClient, spendUnits } from '../lib/auth.js';
 
 const router = Router();
@@ -14,39 +15,63 @@ router.post('/', requireClient, async (req, res) => {
     return res.status(429).json({ error: 'Дневной лимит по тарифу исчерпан, попробуйте завтра' });
   }
 
-  const { impressions, clicks, spend, leads, notes } = req.body || {};
+  const { city, impressions, clicks, spend, leads, notes } = req.body || {};
   if (!spend) return res.status(400).json({ error: 'spend обязателен' });
 
   const ctr = impressions && clicks ? ((Number(clicks) / Number(impressions)) * 100).toFixed(2) : null;
   const cpl = leads && Number(leads) > 0 ? (Number(spend) / Number(leads)).toFixed(0) : null;
 
-  const prompt = `Проанализируй показатели рекламной кампании в Instagram/Facebook на рынке Казахстана и дай конкретные рекомендации.
+  // Сравниваем только с собственной историей этого клиента (реальные прошлые цифры),
+  // никогда с выдуманной рыночной нормой.
+  const prevReports = req.client.reports || [];
+  const prev = prevReports.length ? prevReports[prevReports.length - 1] : null;
+  const historyLine = prev
+    ? `Предыдущий отчёт (${new Date(prev.createdAt).toLocaleDateString('ru-RU')}): CTR ${prev.ctr ?? 'н/д'}%, CPL ${prev.cpl ?? 'н/д'} ₸, расход ${prev.spend} ₸, заявки ${prev.leads ?? 'н/д'}.`
+    : 'Предыдущих отчётов по этому клиенту нет — сравнивать не с чем.';
+
+  const prompt = `Проанализируй фактические показатели рекламной кампании в Instagram/Facebook для одного конкретного клиента.
+Город: ${city || 'не указан'}
 Показы: ${impressions || 'не указано'}
 Клики: ${clicks || 'не указано'}
-CTR: ${ctr ? ctr + '%' : 'недостаточно данных'}
+CTR (посчитан из показов/кликов): ${ctr ? ctr + '%' : 'недостаточно данных для расчёта'}
 Расход: ${spend} ₸
 Заявки: ${leads || 'не указано'}
-CPL: ${cpl ? cpl + ' ₸' : 'недостаточно данных'}
+CPL (посчитан из расхода/заявок): ${cpl ? cpl + ' ₸' : 'недостаточно данных для расчёта'}
 Доп. контекст: ${notes || '—'}
+${historyLine}
 
 Дай:
-1) Оценка результата: хороший/средний/слабый — с обоснованием, относительно каких ориентиров по рынку это оцениваешь
-2) 2-3 конкретные гипотезы, почему результат именно такой (не общие слова, а конкретные причины под эти цифры)
-3) 2-3 конкретных действия на следующую неделю — что именно поменять (не "улучшить таргетинг", а конкретный шаг)
+1) Изложи фактические цифры (CTR, CPL, расход, заявки) простыми словами. Если есть предыдущий отчёт — сравни с ним (рост/падение). Если предыдущего отчёта нет — так и скажи, без оценки "хорошо/плохо", потому что сравнивать не с чем (рыночных норм у нас нет).
+2) 2-3 гипотезы, почему результат именно такой — основывайся только на переданных цифрах, городе и доп. контексте, ничего не выдумывай.
+3) 2-3 конкретных действия на следующую неделю — ТОЛЬКО по таргетингу, креативу, тексту объявления, времени показа или распределению бюджета внутри уже заданного бюджета.
 
-Жёсткие требования: без вводных и заключительных фраз, без клише, каждый пункт — конкретика, а не настроение. По-русски.`;
+Жёсткий запрет: не предлагай смену города, скидки, акции, новые офферы или снижение цены — эти решения не входят в твои рекомендации и требуют отдельного разрешения клиента.
+Без вводных и заключительных фраз, без клише, без выдуманной статистики и процентов, которых нет в цифрах выше. По-русски.`;
 
   try {
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const completion = await client.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.6,
+      temperature: 0.5,
     });
-    res.json({ text: completion.choices[0].message.content.trim(), ctr, cpl });
+    const text = completion.choices[0].message.content.trim();
+
+    const report = {
+      text, city: city || '', impressions: impressions || null, clicks: clicks || null,
+      spend, leads: leads || null, ctr, cpl, notes: notes || '', createdAt: new Date().toISOString(),
+    };
+    req.client.reports.push(report);
+    await db.write();
+
+    res.json({ text, ctr, cpl });
   } catch (err) {
     res.status(502).json({ error: 'Ошибка анализа', details: err.message });
   }
+});
+
+router.get('/history', requireClient, async (req, res) => {
+  res.json({ reports: req.client.reports || [] });
 });
 
 export default router;

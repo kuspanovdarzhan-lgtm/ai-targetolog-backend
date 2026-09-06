@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import OpenAI from 'openai';
+import { db } from '../lib/db.js';
 import { requireClient, spendUnits } from '../lib/auth.js';
 
 const router = Router();
@@ -37,9 +38,9 @@ router.post('/', requireClient, async (req, res) => {
       model: 'gpt-4o-mini',
       messages: [{
         role: 'user',
-        content: `Translate and expand this into a vivid, concrete English prompt for an AI image generator making an ad creative. Keep it under 300 characters, describe the literal scene (subject, setting, composition), no marketing fluff words. Source (Russian): "${description}". Style: ${style}.`,
+        content: `Translate and expand this into a vivid, concrete English prompt for an AI image generator making an ad creative. Keep it under 300 characters, describe the literal scene (subject, setting, composition) using ONLY what is stated below — do not invent product features, brands, or claims that aren't mentioned. No marketing fluff words. Source (Russian): "${description}". Style: ${style}.`,
       }],
-      temperature: 0.5,
+      temperature: 0.4,
     });
     const englishPrompt = translation.choices[0].message.content.trim();
 
@@ -48,7 +49,12 @@ router.post('/', requireClient, async (req, res) => {
       prompt: `Advertising creative for social media. ${englishPrompt} No text or letters anywhere in the image.`,
       size,
     });
-    res.json({ b64: image.data[0].b64_json });
+    const b64 = image.data[0].b64_json;
+
+    req.client.materials.creative = { b64, format, description, style, createdAt: new Date().toISOString() };
+    await db.write();
+
+    res.json({ b64 });
   } catch (err) {
     res.status(502).json({ error: 'Ошибка генерации изображения', details: err.message });
   }
