@@ -1,10 +1,14 @@
 import { Router } from 'express';
 import multer from 'multer';
 import fs from 'fs';
+import path from 'path';
+import { spawn } from 'child_process';
+import ffmpegPath from 'ffmpeg-static';
 import { db } from '../lib/db.js';
 import { requireClient } from '../lib/auth.js';
 import { newJobId, jobDir, createJob, getJob, listJobs, removeJobFiles, enqueue } from '../lib/videoJobs.js';
 import { generateEditPlans } from '../lib/videoEditPlan.js';
+import { renderAllVariants } from '../lib/ffmpegRender.js';
 
 const router = Router();
 
@@ -70,6 +74,10 @@ async function processJob(jobId) {
       })),
     });
     job.plans = plans;
+    await db.write();
+
+    const videos = await renderAllVariants(plans, jobDir(jobId), jobDir(jobId));
+    job.videos = videos;
     job.status = 'completed';
     job.error = null;
   } catch (err) {
@@ -124,11 +132,107 @@ router.get('/jobs/:id', requireClient, (req, res) => {
   const job = getJob(req.params.id, req.client.id);
   if (!job) return res.status(404).json({ error: 'Задание не найдено или уже удалено (файлы хранятся 24 часа)' });
   res.json({
-    id: job.id, status: job.status, plans: job.plans, error: job.error,
+    id: job.id, status: job.status, plans: job.plans, videos: job.videos, error: job.error,
     brief: job.brief,
     files: job.files.map((f) => f.originalName),
     createdAt: job.createdAt, updatedAt: job.updatedAt, expiresAt: job.expiresAt,
   });
+});
+
+// Скачать готовый ролик варианта A или B
+router.get('/jobs/:id/download/:variant', requireClient, (req, res) => {
+  const job = getJob(req.params.id, req.client.id);
+  if (!job) return res.status(404).json({ error: 'Задание не найдено или уже удалено (файлы хранятся 24 часа)' });
+  const video = (job.videos || []).find((v) => v.variant === req.params.variant.toUpperCase());
+  if (!video) return res.status(404).json({ error: 'Ролик этого варианта не найден — возможно, рендер ещё не завершён' });
+  const filePath = path.join(jobDir(job.id), video.filename);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Файл ролика не найден на сервере' });
+  res.download(filePath, `orbit_${job.id}_${video.variant}.mp4`);
+});
+
+// Пересобрать ролик с изменённым пользователем текстом (без повторного вызова ИИ)
+router.post('/jobs/:id/rerender', requireClient, async (req, res) => {
+  const job = getJob(req.params.id, req.client.id);
+  if (!job) return res.status(404).json({ error: 'Задание не найдено или уже удалено (файлы хранятся 24 часа)' });
+  if (!job.plans) return res.status(400).json({ error: 'У задания ещё нет готового плана монтажа' });
+  const { variants } = req.body || {};
+  if (!Array.isArray(variants) || !variants.length) {
+    return res.status(400).json({ error: 'Нужно передать variants — массив планов с изменённым текстом' });
+  }
+  // Подставляем изменённый текст в существующий план, но source-клипы и тайминги не даём поменять
+  const knownFiles = new Set(job.files.map((f) => f.filename));
+  for (const v of variants) {
+    for (const clip of v.clips || []) {
+      if (!knownFiles.has(clip.source)) {
+        return res.status(400).json({ error: `Неизвестный файл клипа "${clip.source}"` });
+      }
+    }
+  }
+  try {
+    job.status = 'processing';
+    job.updatedAt = new Date().toISOString();
+    await db.write();
+    const videos = await renderAllVariants(variants, jobDir(job.id), jobDir(job.id));
+    job.plans = variants;
+    job.videos = videos;
+    job.status = 'completed';
+    job.error = null;
+  } catch (err) {
+    job.status = 'failed';
+    job.error = err.message;
+  }
+  job.updatedAt = new Date().toISOString();
+  await db.write();
+  res.json({ id: job.id, status: job.status, plans: job.plans, videos: job.videos, error: job.error });
+});
+
+// Служебный маршрут для тестирования рендера без реальных исходников —
+// генерирует 3 коротких синтетических клипа (цветные заливки) через сам ffmpeg.
+function makeSyntheticClip(outPath, color, seconds) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(ffmpegPath, [
+      '-y',
+      '-f', 'lavfi', '-i', `color=c=${color}:s=640x360:d=${seconds}:r=30`,
+      '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
+      outPath,
+    ]);
+    let stderr = '';
+    proc.stderr.on('data', (d) => { stderr += d.toString(); });
+    proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(stderr.slice(-800)))));
+  });
+}
+
+router.post('/_debug/synthetic-job', requireClient, async (req, res) => {
+  try {
+    const jobId = newJobId();
+    const dir = jobDir(jobId);
+    fs.mkdirSync(dir, { recursive: true });
+    const colors = ['red', 'green', 'blue'];
+    const files = [];
+    for (let i = 0; i < colors.length; i++) {
+      const filename = `synthetic_${i + 1}.mp4`;
+      await makeSyntheticClip(path.join(dir, filename), colors[i], 5);
+      files.push({ filename, originalname: `clip${i + 1}.mp4`, size: fs.statSync(path.join(dir, filename)).size });
+    }
+    const brief = {
+      service: req.body.service || 'Тестовая услуга (синтетические клипы)',
+      price: req.body.price || '1234 тенге',
+      benefits: req.body.benefits || 'тестовое преимущество',
+      audience: req.body.audience || 'тестовая аудитория',
+      pain: req.body.pain || 'тестовая боль',
+      desire: req.body.desire || 'тестовое желание',
+      language: req.body.language || 'ru',
+      duration: req.body.duration || '15 секунд',
+      cta: req.body.cta || 'Тестовый призыв к действию',
+      clipDescriptions: {},
+    };
+    const job = createJob(jobId, req.client.id, brief, files);
+    await db.write();
+    res.status(201).json({ jobId: job.id, status: job.status, expiresAt: job.expiresAt });
+    enqueue(job.id, processJob);
+  } catch (err) {
+    res.status(500).json({ error: `Не удалось создать синтетическое задание: ${err.message}` });
+  }
 });
 
 // Понятные сообщения об ошибках вместо стандартной HTML-страницы Express
