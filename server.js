@@ -20,7 +20,8 @@ app.set('trust proxy', true); // за прокси Render — иначе req.ip 
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 
-app.get('/health', (req, res) => res.json({ ok: true }));
+const BOOT_ID = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+app.get('/health', (req, res) => res.json({ ok: true, boot: BOOT_ID }));
 
 app.use('/api/leads', leadsRouter);
 app.use('/api/copy', copyRouter);
