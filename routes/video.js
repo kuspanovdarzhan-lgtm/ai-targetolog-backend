@@ -12,7 +12,6 @@ const MIN_FILES = 3;
 const MAX_FILES = 10;
 const MAX_FILE_MB = 25;
 const ALLOWED_EXT = ['.mp4', '.mov'];
-const ALLOWED_MIME = ['video/mp4', 'video/quicktime'];
 
 function extOf(name) {
   const i = name.lastIndexOf('.');
@@ -37,7 +36,11 @@ const upload = multer({
   storage,
   limits: { fileSize: MAX_FILE_MB * 1024 * 1024, files: MAX_FILES },
   fileFilter: (req, file, cb) => {
-    if (!ALLOWED_EXT.includes(extOf(file.originalname)) || !ALLOWED_MIME.includes(file.mimetype)) {
+    // Расширение — основной сигнал (надёжнее, чем content-type, который клиенты
+    // выставляют по-разному); mimetype проверяем мягко, только если он явно не видео.
+    const extOk = ALLOWED_EXT.includes(extOf(file.originalname));
+    const mimeLooksWrong = file.mimetype && !file.mimetype.startsWith('video/') && file.mimetype !== 'application/octet-stream';
+    if (!extOk || mimeLooksWrong) {
       return cb(new Error('BAD_FILE_TYPE'));
     }
     cb(null, true);
