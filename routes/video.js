@@ -199,7 +199,7 @@ function makeSyntheticClip(outPath, color, seconds) {
       '-f', 'lavfi', '-i', `color=c=${color}:s=640x360:d=${seconds}:r=30`,
       '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
       outPath,
-    ]);
+    ], { stdio: ['ignore', 'ignore', 'pipe'] });
     let stderr = '';
     proc.stderr.on('data', (d) => { stderr += d.toString(); });
     proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(stderr.slice(-800)))));
