@@ -202,24 +202,6 @@ function makeSyntheticClip(outPath, color, seconds) {
   });
 }
 
-// Временный диагностический маршрут — проверить, какие фильтры собраны в бинарник ffmpeg-static
-router.get('/_debug/ffmpeg-info', requireClient, (req, res) => {
-  const proc = spawn(ffmpegPath, ['-filters']);
-  let out = '';
-  let err = '';
-  proc.stdout.on('data', (d) => { out += d.toString(); });
-  proc.stderr.on('data', (d) => { err += d.toString(); });
-  proc.on('close', (code) => {
-    res.json({
-      code,
-      hasDrawtext: out.includes('drawtext'),
-      hasFreetype: err.includes('libfreetype'),
-      hasFontconfig: err.includes('fontconfig'),
-      versionLine: (err.match(/ffmpeg version[^\n]*/) || [])[0],
-    });
-  });
-});
-
 router.post('/_debug/synthetic-job', requireClient, async (req, res) => {
   try {
     const jobId = newJobId();
