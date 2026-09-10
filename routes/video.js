@@ -210,7 +210,13 @@ router.get('/_debug/ffmpeg-info', requireClient, (req, res) => {
   proc.stdout.on('data', (d) => { out += d.toString(); });
   proc.stderr.on('data', (d) => { err += d.toString(); });
   proc.on('close', (code) => {
-    res.json({ code, hasDrawtext: out.includes('drawtext'), stdoutTail: out.slice(-2000), stderrTail: err.slice(-500) });
+    res.json({
+      code,
+      hasDrawtext: out.includes('drawtext'),
+      hasFreetype: err.includes('libfreetype'),
+      hasFontconfig: err.includes('fontconfig'),
+      versionLine: (err.match(/ffmpeg version[^\n]*/) || [])[0],
+    });
   });
 });
 
