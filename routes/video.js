@@ -78,6 +78,7 @@ async function processJob(jobId) {
 
     const videos = await renderAllVariants(plans, jobDir(jobId), jobDir(jobId), async (stage) => {
       job.stage = stage;
+      if (stage.includes('args:')) job.lastArgs = stage;
       job.updatedAt = new Date().toISOString();
       await db.write();
     });
@@ -136,7 +137,7 @@ router.get('/jobs/:id', requireClient, (req, res) => {
   const job = getJob(req.params.id, req.client.id);
   if (!job) return res.status(404).json({ error: 'Задание не найдено или уже удалено (файлы хранятся 24 часа)' });
   res.json({
-    id: job.id, status: job.status, stage: job.stage, plans: job.plans, videos: job.videos, error: job.error,
+    id: job.id, status: job.status, stage: job.stage, lastArgs: job.lastArgs, plans: job.plans, videos: job.videos, error: job.error,
     brief: job.brief,
     files: job.files.map((f) => f.originalName),
     createdAt: job.createdAt, updatedAt: job.updatedAt, expiresAt: job.expiresAt,
