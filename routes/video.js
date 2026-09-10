@@ -125,6 +125,7 @@ router.get('/jobs/:id', requireClient, (req, res) => {
   if (!job) return res.status(404).json({ error: 'Задание не найдено или уже удалено (файлы хранятся 24 часа)' });
   res.json({
     id: job.id, status: job.status, plans: job.plans, error: job.error,
+    brief: job.brief,
     files: job.files.map((f) => f.originalName),
     createdAt: job.createdAt, updatedAt: job.updatedAt, expiresAt: job.expiresAt,
   });
