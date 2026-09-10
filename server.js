@@ -13,6 +13,7 @@ import clientLeadsRouter from './routes/clientLeads.js';
 import reportRouter from './routes/report.js';
 import freeTrialRouter from './routes/freeTrial.js';
 import campaignRouter from './routes/campaign.js';
+import videoRouter from './routes/video.js';
 
 const app = express();
 app.set('trust proxy', true); // за прокси Render — иначе req.ip будет одинаковым для всех
@@ -32,6 +33,7 @@ app.use('/api/client-leads', clientLeadsRouter);
 app.use('/api/report', reportRouter);
 app.use('/api/free-trial', freeTrialRouter);
 app.use('/api/campaign', campaignRouter);
+app.use('/api/video', videoRouter);
 
 const port = process.env.PORT || 3001;
 app.listen(port, () => {
