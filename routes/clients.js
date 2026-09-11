@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import crypto from 'crypto';
-import { db, initDb } from '../lib/db.js';
+import { db, initDb, findClientByCode } from '../lib/db.js';
 import { requireAdmin, TARIFF_LIMITS } from '../lib/auth.js';
 
 const router = Router();
@@ -67,7 +67,7 @@ router.patch('/:id', requireAdmin, async (req, res) => {
 router.post('/login', async (req, res) => {
   const { code } = req.body || {};
   await db.read();
-  const client = db.data.clients.find((c) => c.code === code && c.active !== false);
+  const client = findClientByCode(code);
   if (!client) return res.status(401).json({ error: 'неверный или отключённый код доступа' });
   const limit = TARIFF_LIMITS[client.tariff] ?? TARIFF_LIMITS.START;
   const todayKey = new Date().toISOString().slice(0, 10);
